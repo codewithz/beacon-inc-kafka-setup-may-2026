@@ -140,9 +140,9 @@ services:
     hostname: conduktor-console
     container_name: conduktor-console
     depends_on:
-      - postgresql
+     - postgresql
     ports:
-      - "8080:8080"
+      - "8087:8080"
     volumes:
       - type: bind
         source: "./platform-config.yml"
@@ -152,23 +152,23 @@ services:
       CDK_IN_CONF_FILE: /opt/conduktor/platform-config.yaml
 
   conduktor-monitoring:
-    hostname: conduktor-monitorindocker g
+    hostname: conduktor-monitoring
     container_name: conduktor-monitoring
     image: conduktor/conduktor-console-cortex:1.24.1
     environment:
       CDK_CONSOLE-URL: "http://conduktor-console:8080"
-    
-  # schema-registry:
-  #   image: confluentinc/cp-schema-registry:7.4.1
-  #   hostname: schema-registry
-  #   container_name: schema-registry
-  #   depends_on:
-  #     - rest-proxy
-  #   ports:
-  #     - "8081:8081"
-  #   environment:
-  #     SCHEMA_REGISTRY_HOST_NAME: schema-registry
-  #     SCHEMA_REGISTRY_KAFKASTORE_BOOTSTRAP_SERVERS: 'broker-1:29092,broker-2:29093,broker-3:29094'
+      
+  schema-registry:
+    image: confluentinc/cp-schema-registry:7.4.1
+    hostname: schema-registry
+    container_name: schema-registry
+    depends_on:
+      - rest-proxy
+    ports:
+      - "8081:8081"
+    environment:
+      SCHEMA_REGISTRY_HOST_NAME: schema-registry
+      SCHEMA_REGISTRY_KAFKASTORE_BOOTSTRAP_SERVERS: 'broker-1:29092,broker-2:29093,broker-3:29094'
 
   # ksqldb-server:
   #   image: confluentinc/cp-ksqldb-server:7.4.1
@@ -193,3 +193,67 @@ services:
   #     - ksqldb-server
   #   entrypoint: /bin/sh
   #   tty: true
+
+
+
+  # ── HDFS NameNode ──────────────────────────────────────────────────────────
+  namenode:
+    image: apache/hadoop:3.4.1
+    container_name: beacon-namenode
+    hostname: namenode
+    user: root
+    ports:
+      - "9870:9870"
+      - "8020:8020"
+    environment:
+      HADOOP_HOME: /opt/hadoop
+      CLUSTER_NAME: beacon-hdfs
+      HDFS_NAMENODE_USER: root
+      HADOOP_CONF_DIR: /opt/hadoop/etc/hadoop
+    command: >
+      sh -c "
+        mkdir -p /opt/hadoop/data/nameNode &&
+        if [ ! -f /opt/hadoop/data/nameNode/current/VERSION ]; then
+          echo '>>> Formatting NameNode for first time...' &&
+          hdfs namenode -format -force -nonInteractive;
+        fi &&
+        echo '>>> Starting NameNode...' &&
+        hdfs namenode
+      "
+    volumes:
+      - namenode_data:/opt/hadoop/data/nameNode
+      - ./hadoop-config/core-site.xml:/opt/hadoop/etc/hadoop/core-site.xml
+      - ./hadoop-config/hdfs-site.xml:/opt/hadoop/etc/hadoop/hdfs-site.xml
+
+  datanode:
+    image: apache/hadoop:3.4.1
+    container_name: beacon-datanode
+    hostname: datanode
+    user: root
+    depends_on:
+      - namenode        # ← simple depends_on, no condition
+    ports:
+      - "9866:9866"
+      - "9864:9864"
+    environment:
+      HADOOP_HOME: /opt/hadoop
+      HDFS_DATANODE_USER: root
+      HADOOP_CONF_DIR: /opt/hadoop/etc/hadoop
+    command: >
+      sh -c "
+        mkdir -p /opt/hadoop/data/dataNode &&
+        echo '>>> Waiting for NameNode...' &&
+        sleep 20 &&
+        echo '>>> Starting DataNode...' &&
+        hdfs datanode
+      "
+    volumes:
+      - datanode_data:/opt/hadoop/data/dataNode
+      - ./hadoop-config/core-site.xml:/opt/hadoop/etc/hadoop/core-site.xml
+      - ./hadoop-config/hdfs-site.xml:/opt/hadoop/etc/hadoop/hdfs-site.xml
+
+ 
+# ── Volumes ────────────────────────────────────────────────────────────────
+volumes:
+  namenode_data:
+  datanode_data:
